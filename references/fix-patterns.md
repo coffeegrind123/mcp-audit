@@ -198,6 +198,25 @@ away on the next build. Fix the OpenAPI source (`description` on each parameter 
 schema property) and regenerate. If the spec genuinely has none, the generator config
 is the place to inject them — not the artifact.
 
+## Client-compatibility fixes (mcp-lint)
+
+Verify the claim for the client first (`mcp-lint.md`). Then, on the **input** schema:
+
+- **`required: false` on a property** — delete it; `required` is an array on the parent.
+- **Empty `enum`** — remove the enum or give it values; nothing can satisfy it.
+- **Recursive `$ref`** — inline a bounded depth, or take the recursive part as a JSON string
+  the tool parses.
+- **`anyOf`/`oneOf` from nullable fields** — if a target client really rejects them, make
+  the field optional instead of nullable (absent rather than `null`).
+- **OpenAI strict tools** (`openai/*`) — every property listed in `required` (optional ones
+  become nullable) and `additionalProperties: false`. Only for servers that target strict
+  mode; it conflicts with the advice above, so pick per target.
+- **`description-exists` on output schemas** — describe output fields the model has to
+  interpret (codes, units, ids to pass back); plain echoes can stay bare.
+
+`mcp-lint fix` rewrites a JSON tools file. Use it only on files that are the source of
+truth, never on a snapshot of a server whose schemas come from code.
+
 ## After editing
 
 - **Python:** `python3 -c "import src.server"` from the server root, or launch it — a

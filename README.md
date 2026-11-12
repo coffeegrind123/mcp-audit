@@ -5,9 +5,15 @@ for **agent usability** — then fixes what it finds and proves the grade moved.
 
 An MCP server can be 100% spec-compliant and still be unusable by a model. The spec
 governs transport; nothing in it makes a model pick the right tool, fill arguments
-correctly, or decline when no tool fits. This skill drives
-[`mcpgrade`](https://www.npmjs.com/package/mcpgrade) against that second axis, maps the
-findings back to source, applies the mechanical fixes, and re-scans.
+correctly, or decline when no tool fits. This skill drives two pinned tools against the
+remaining axes, maps the findings back to source, applies the mechanical fixes, and
+re-scans:
+
+- a fork of [`mcpgrade`](https://github.com/tenglidev/mcpgrade),
+  [`coffeegrind123/mcpgrade`](https://github.com/coffeegrind123/mcpgrade) — agent
+  usability, with per-tool exceptions, server instructions/resources/prompts, and a
+  code-mode profile for servers built on a code tool, a batch tool and a searchable API;
+- [`mcp-lint`](https://www.npmjs.com/package/mcp-lint) — which clients accept the schemas.
 
 ## Install
 
@@ -55,8 +61,9 @@ deferrals — three breaking renames and the catalog-size rules.
 | File | Contents |
 |---|---|
 | `SKILL.md` | The workflow. Loaded when the skill triggers. |
-| `references/rules.md` | All 26 mcpgrade rules, what each costs you, and what static analysis cannot see. |
-| `references/fix-patterns.md` | Per-framework fix patterns (FastMCP, zod, raw JSON Schema, OpenAPI) and the traps. |
+| `references/rules.md` | The mcpgrade fork's rules, profiles and exceptions, what each costs you, and what static analysis cannot see. |
+| `references/mcp-lint.md` | Running mcp-lint safely, its output, triage, and its overlap with mcpgrade. |
+| `references/fix-patterns.md` | Per-framework fix patterns (FastMCP, zod, raw JSON Schema, OpenAPI), compatibility fixes, and the traps. |
 
 ## Traps it encodes
 
@@ -75,8 +82,19 @@ These were paid for in real debugging rounds:
 - **N004 wants the tool's name echoed in its description.**
 - **Fixing descriptions costs token score**, and can trip T001. That is the correct
   trade, not a regression.
+- **zod v4 omits `required` too** when every field is optional, and `meta({required})`
+  replaces the computed list. `fix-patterns.md` has the guarded helper.
+- **A server's design outranks the grader.** Splitting tools or renaming a code tool to
+  satisfy a size or naming rule undoes a code-first design; record an exception instead.
+- **Check the detected roles first** in code-mode: a wrong role means the wrong rules.
+- **mcp-lint imports plugins from any `.mcplintrc.json` above the current directory.**
+  Run it from a scratch directory with an explicit empty config.
+- **Triage mcp-lint, never quote its raw count** — most findings are client warnings and
+  output schemas.
+- **A first `npx` run of a stdio server can time out** on the download; fetch it once and
+  re-run before suspecting the grader.
 
 ## Credit
 
-`mcpgrade` and its ruleset are by [tengli.dev](https://tengli.dev/posts/mcp-servers-failing-agents.html).
-This repo is only the skill that drives it.
+`mcpgrade` and its ruleset are by [tengli.dev](https://tengli.dev/posts/mcp-servers-failing-agents.html);
+`mcp-lint` is by robert19001-cmyk. This repo is only the skill that drives them.

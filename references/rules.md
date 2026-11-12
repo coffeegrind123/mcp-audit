@@ -1,17 +1,38 @@
-# mcpgrade rule reference (v0.4.0)
+# mcpgrade rule reference (fork v0.5.0-fork.4)
 
 Load this when you need to explain a specific finding precisely, or decide whether a
-rule is worth fixing on a given server.
+rule is worth fixing on a given server. Client-compatibility rules (mcp-lint) are in
+`mcp-lint.md`.
 
-Regenerate after any version bump — rule IDs and severities are not stable across
-versions:
+The skill pins the fork `github:coffeegrind123/mcpgrade#v0.5.0-fork.4` (upstream
+`mcpgrade@0.4.0` plus the rules below marked *fork*). Regenerate after any version bump —
+rule IDs and severities are not stable across versions:
 
 ```bash
-npx -y mcpgrade@<ver> rules
+npx -y github:coffeegrind123/mcpgrade#<tag> rules
 ```
 
-26 rules across five scored categories: `desc`, `naming`, `schema`, `tokens`,
-`consistency`. There is no D003 in 0.4.0 — a gap in the numbering, not a missing rule.
+Scored categories: `desc`, `naming`, `schema`, `tokens`, `consistency`, and in the
+code-mode profile `prog` (Programmability). There is no D003 — a gap in the numbering,
+not a missing rule.
+
+## Profiles (fork)
+
+`--profile auto` (default) detects the tools' roles and picks:
+
+- **classic** — the upstream grade: weights desc 30 / naming 15 / schema 30 / tokens 15 /
+  consistency 10.
+- **code-mode** — when the server has a **code tool** (a free-text string parameter
+  named `code`, `script`, `source`, `program`, a language name; an enum is a mode switch,
+  not a program) or a **batch tool** (an array-of-objects parameter named `ops`,
+  `operations`, `actions`, `commands`, `steps`, ...). Adds Programmability at 20% and
+  scales the rest: desc 25 / naming 10 / schema 25 / tokens 10 / consistency 10 / prog 20.
+  N003 does not apply to the code tool.
+
+The report prints the detected roles (`code`, `batch`, `search`, and API `docs`
+resources). Check them before reading the grade: a wrong role means the wrong rules.
+`"roles": {"<tool>": "code" | "batch" | "search" | "none"}` in `.mcpgraderc.json`
+corrects them.
 
 Score anchors observed in the wild: A ≈ 95+, D ≈ 66, F ≈ 57. A single category at 0
 (usually `desc`) is enough to drag an otherwise-clean server to D.
@@ -29,6 +50,11 @@ leverage per hour — the whole point of the ruleset.
 | **D005** | warn | Placeholder or dev-leftover text | `"TODO"`, `"test tool"` shipped to production. |
 | **D006** | warn | Two descriptions nearly identical | The model cannot tell the tools apart, so it picks by coin-flip. |
 | **D007** | info | Description doesn't state the return value | Breaks multi-step planning: the model can't tell what it will hold after the call. |
+| **I001** *fork* | warn | No server instructions on a server with 5+ tools, or any resources/prompts | Nothing tells the model where to start or how the parts fit; most clients never surface resources or prompts on their own. |
+| **I002** *fork* | warn | Instructions over 4,096 characters | Claude Code keeps only the first 4,096; the rest never reaches the model. |
+
+I001/I002 are scored under `desc`. They never fire on a snapshot file that did not
+capture instructions (unknown is not the same as none).
 
 **Fix shape.** Tool description answers three questions — what it does, when to use
 it, what it returns. Parameter description gives meaning, format, and one concrete
@@ -45,7 +71,7 @@ your tools carry.
 |---|---|---|---|
 | **N001** | warn | Inconsistent convention across tools | Mixing `getUser` and `list_items` makes the catalog read as several APIs. |
 | **N002** | error | Names too similar (≤2 chars apart) | Measured cause of live mis-selection: `get_cookies`↔`set_cookie`, `extract`↔`scrape`. |
-| **N003** | warn | Generic verb, no object | `execute`, `run`, `query` say nothing about what is operated on. |
+| **N003** | warn | Generic verb, no object | `execute`, `run`, `query` say nothing about what is operated on. Not applied to the code tool in code-mode, where `execute` is the convention. |
 | **N004** | info | Name and description semantically disjoint | The name promises one thing, the text another. |
 
 **Fix shape.** `verb_object`, one convention across the whole catalog, distinguishing
@@ -66,7 +92,7 @@ reference in the same pass.
 | **S005** | warn | Fixed value set described in prose instead of `enum` |
 | **S006** | warn | Schema nested too deep |
 | **S007** | warn | Too many parameters on one tool |
-| **S008** | info | Complex parameter carries no example |
+| **S008** | info | Complex parameter carries no example (not reported where D004 already flags the parameter: one defect, one charge) |
 
 **Fix shape.** Declare `required` explicitly — an empty array is valid and is the
 point. Move any fixed value set out of prose into `enum`, where the model cannot
@@ -96,6 +122,7 @@ tax, not a one-time cost.
 | **T002** | warn | One tool's schema over budget |
 | **T003** | warn | Repeated boilerplate across descriptions |
 | **T004** | info | Too many tools in one server (suggested max 25) |
+| **T005** *fork* | info | 15+ tools and no code or batch tool; replaces T004 when both fire |
 
 **Watch for the inversion:** an undocumented server scores *well* on tokens precisely
 because it is undocumented. A 100 here next to a 0 in `desc` is not a strength — it is
@@ -104,6 +131,39 @@ the same defect counted twice. Fixing `desc` will and should cost tokens.
 T004 is real but not automatically fatal: a well-documented 15-tool catalog can score
 A. Size does not force a bad grade; it makes discipline harder to sustain, and every
 added tool is another description to write and another name that can collide.
+
+## Programmability (`prog`, code-mode only) — fork
+
+Can a model write a working program or batch against the server on the first try? Read
+from the tool's description and its parameters' descriptions; normalised by the number of
+code, batch and search tools, not the whole catalog.
+
+| Rule | Sev | What it means |
+|---|---|---|
+| **P001** | error | Code tool never names its language |
+| **P002** | warn | Code tool doesn't say how a result comes back (`return`, last expression, stdout) |
+| **P003** | warn | Code tool states no limits (time, memory, output), as text or parameters |
+| **P004** | warn | A writing code/batch tool doesn't say what a failure halfway leaves (rollback or partial) |
+| **P005** | warn | Neither the code/batch tool nor the instructions point at the API (search tool or doc URI) |
+| **P006** | warn | A documentation URI in a description or the instructions matches no listed resource |
+| **P007** | warn | Batch tool doesn't state its size limit (`maxItems`) or how to refer to earlier results |
+| **P008** | info | A writing code/batch tool takes no idempotency key |
+| **P009** | info | A writing code tool has no read-only mode (and no read-only sibling) |
+
+## Exceptions and reach (fork)
+
+A rule that conflicts with a server's stated design is an exception, not a finding:
+
+```json
+{ "exceptions": [{ "rule": "S007", "tool": "<tool>", "reason": "one view tool by design" }] }
+```
+
+`reason` is required; `tool` is optional (omit for server-wide). Accepted findings are
+listed with the reason and not scored; an exception that matches nothing is reported as
+stale. Prefer this to `disable`, which hides the same problem in every other tool.
+
+Every report shows the catalog's tokens per request. With `"apiOperations": <n>` declared
+it also shows operations reachable per 1k catalog tokens — not scored.
 
 ## Probe-only rules (`--probe`)
 
