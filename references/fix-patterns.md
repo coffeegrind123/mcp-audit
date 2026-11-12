@@ -129,8 +129,49 @@ The registration signature differs across SDK versions (`server.tool(...)` vs
 `server.registerTool(...)`, and where `description` sits). **Read the existing
 registrations in the repo and match them** rather than importing a remembered shape.
 
-`.optional()` / `.default()` control `required`, and zod does emit an explicit
-`required` array — so unlike FastMCP, S003 here is a genuine signature-level fix.
+`.optional()` / `.default()` control `required`. **But zod v4 omits `required` entirely
+when every field is optional or defaulted** — the same S003 trap as FastMCP. The fix is
+`.meta({ required: [] })` on the object, and it has its own trap: `meta()` **replaces** the
+computed list, so on an object with a mandatory field it silently drops that field from
+`required`. Wrap it so it refuses that case at startup:
+
+```ts
+function optionalArgs(shape) {
+  const required = Object.keys(shape).filter((k) => !shape[k].safeParse(undefined).success);
+  if (required.length) throw new Error(`optionalArgs: ${required.join(", ")} is required; use z.object()`);
+  return z.object(shape).meta({ required: [] });
+}
+```
+
+Verified on the TS SDK v2 (`@modelcontextprotocol/server`): validation is unchanged
+(`meta` only affects the JSON Schema).
+
+### Token padding zod adds (T001 / T002)
+
+zod's JSON Schema puts `"$schema"` on every schema and
+`"minimum": -9007199254740991, "maximum": 9007199254740991` on every `.int()`. Neither
+carries information (2020-12 is MCP's default dialect; zod still enforces the bounds),
+and on a mid-size catalog they cost ~900 tokens per request. The SDK accepts any Standard
+Schema, so wrap each schema and clean only the advertised JSON:
+
+```ts
+const SAFE = Number.MAX_SAFE_INTEGER;
+const strip = (n) => Array.isArray(n) ? n.map(strip) : n && typeof n === "object"
+  ? Object.fromEntries(Object.entries(n)
+      .filter(([k, v]) => k !== "$schema" && !(k === "minimum" && v === -SAFE) && !(k === "maximum" && v === SAFE))
+      .map(([k, v]) => [k, strip(v)]))
+  : n;
+function lean(schema) {
+  if (!schema) return schema;
+  const std = schema["~standard"];
+  return { "~standard": { ...std, jsonSchema: {
+    input: (o) => strip(std.jsonSchema.input(o)), output: (o) => strip(std.jsonSchema.output(o)) } } };
+}
+```
+
+Apply it at registration (`inputSchema: lean(...)`, `outputSchema: lean(...)`). Confirm
+with a real `tools/list` through the SDK, not with your own dump: count
+`9007199254740991` in the output (should be 0).
 
 ## Raw JSON Schema
 
