@@ -1,11 +1,9 @@
 ---
 name: mcp-audit
-description: Audit an MCP server for agent usability — not spec compliance — with mcpgrade (a fork with a code-mode profile), plus client compatibility with mcp-lint, then fix what they find and prove the grade moved. Grades tool and parameter descriptions, name collisions, schema design, token cost, server instructions, and for code-first servers whether a model can write a working program or batch; checks which clients (Claude, Cursor, Gemini, OpenAI, ...) accept the schemas; maps findings back to source, applies fixes, and re-scans. Use when the user wants to audit, grade, lint, or score an MCP server, asks why a model picks the wrong tool or hallucinates arguments or ignores a tool, or mentions mcpgrade, missing tool descriptions, or MCP catalog bloat. Examples: 'audit my MCP server', 'run mcpgrade', 'grade the browser server', 'why does it call the wrong tool', 'my tools have no parameter descriptions', 'is my MCP server usable by an agent'.
-allowed-tools: Read Write Edit Glob Grep AskUserQuestion Bash(npx:*) Bash(python3:*) Bash(jq:*) Bash(git status:*) Bash(git diff:*) Bash(git restore:*)
+description: "Audit an MCP server for agent usability — not spec compliance — with mcpgrade (a fork with a code-mode profile), plus client compatibility with mcp-lint, then fix what they find and prove the grade moved. Grades tool and parameter descriptions, name collisions, schema design, token cost, server instructions, and for code-first servers whether a model can write a working program or batch; checks which clients (Claude, Cursor, Gemini, OpenAI, ...) accept the schemas; maps findings back to source, applies fixes, and re-scans. Use when the user wants to audit, grade, lint, or score an MCP server, asks why a model picks the wrong tool or hallucinates arguments or ignores a tool, or mentions mcpgrade, missing tool descriptions, or MCP catalog bloat. Examples: 'audit my MCP server', 'run mcpgrade', 'grade the browser server', 'why does it call the wrong tool', 'my tools have no parameter descriptions', 'is my MCP server usable by an agent'."
+allowed-tools: Read Write Edit Glob Grep AskUserQuestion Bash(npx:*) Bash(python3:*) Bash(jq:*) Bash(timeout:*) Bash(grep:*) Bash(diff:*) Bash(git status:*) Bash(git diff:*) Bash(git restore:*)
 when_to_use: "Use when auditing or improving how usable an MCP server is TO A MODEL, or when diagnosing wrong-tool / bad-argument / no-refusal behaviour that traces back to a tool catalog. Examples: 'audit my MCP server', 'run mcpgrade on X', 'why is the agent calling the wrong tool', 'score my tool descriptions'. Do NOT use for MCP protocol/transport debugging (handshake, JSON-RPC framing, capability negotiation) — that is compliance, a different axis."
 argument-hint: "[server name | command | http url | snapshot.json]"
-arguments:
-  - target
 ---
 
 # MCP Agent-Usability Audit
@@ -30,7 +28,7 @@ Below, `MCPGRADE` means `npx -y github:coffeegrind123/mcpgrade#v0.5.0-fork.4` an
 
 ## Inputs
 
-- `$target` (optional): a server name from the Claude config, a literal command,
+- Target (optional), taken whole: `$ARGUMENTS`. A server name from the Claude config, a literal command,
   an `http(s)://` URL, or a saved snapshot `.json`. Omit to enumerate everything installed.
 
 ## Goal
@@ -39,11 +37,23 @@ A named server has a measured grade, the findings are explained in terms of what
 they do to a model, the mechanical fixes are applied to the real source, and a
 re-scan proves the score moved.
 
+## Gotchas
+
+Each is explained where it bites:
+
+- `~/.claude.json` keeps global servers at the root `.mcpServers`, not under `.projects` (step 1).
+- A server's configured `env` must reach the scan, or it hangs (step 2).
+- npx's first-run download reads as `-32001 Request timed out` (step 2).
+- The grade is at the top of the report: never `tail` it (step 2).
+- The report JSON has no top-level `findings` (step 3).
+- An installed copy and a checkout can be identical; edit the one the config launches (step 4).
+- FastMCP S003 can't be fixed from the signature (step 5).
+
 ## Steps
 
 ### 1. Resolve the target
 
-With no `$target`, enumerate installed servers from `~/.claude.json`. **The structure
+With no target, enumerate installed servers from `~/.claude.json`. **The structure
 trips people up:** globally-installed servers live at the JSON *root* under
 `.mcpServers`; project-scoped ones live under `.projects["<abs path>"].mcpServers`,
 and nearly all of those are `{}`.
@@ -182,7 +192,7 @@ tool will trip size and naming rules on purpose; the design outranks the grader.
 **Success criteria**: Confirmed authoritative source tree, the mechanism that produces
 the schemas, and known revert path.
 
-### 5. Fix [human checkpoint]
+### 5. Fix
 
 Read `references/fix-patterns.md` before editing — verified per-framework patterns
 and the traps that waste time.
